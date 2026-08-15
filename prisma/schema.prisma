@@ -273,10 +273,12 @@ model WishlistItem {
 
 model MediaAsset {
   id        String   @id @default(cuid())
-  url       String
+  url       String   @unique
   filename  String
   mime      String
   sizeBytes Int
+  /// The image itself, stored in Postgres so no disk volume is needed.
+  data      Bytes
   createdAt DateTime @default(now())
 }
 

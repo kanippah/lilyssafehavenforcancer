@@ -57,8 +57,9 @@ see [docs/API.md](docs/API.md).
    | `STRIPE_WEBHOOK_SECRET` | *(optional)* webhook signing secret for `/api/webhooks/stripe` |
    | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | *(optional)* order + reset emails |
 
-4. **Persistent storage.** Add a volume mounted at **`/app/uploads`** — this is where
-   admin-uploaded images (logo, product photos) live.
+4. **Storage.** Nothing to do — admin-uploaded images (logo, product photos) are
+   stored in PostgreSQL, so the app container is stateless and no volume is needed.
+   Your images are backed up and restored with the database.
 
 5. **Domain.** Point `lilyssafehavenforcancer.com` at the app in Coolify's domain
    settings; Coolify provisions TLS.
@@ -99,7 +100,10 @@ hosted Stripe Checkout; point a Stripe webhook (`checkout.session.completed`) at
 - All money is stored as integer cents. Currency configurable in admin settings.
 - Auth is a local-database credential system (bcrypt + signed HttpOnly JWT cookie);
   the same JWTs work as bearer tokens for `/api/v1`.
-- Uploaded images are stored on disk (`UPLOAD_DIR`, default `./uploads`) and recorded
-  in the media library; everything else lives in PostgreSQL.
+- Everything lives in PostgreSQL, including uploaded images: they are stored as
+  binary columns in the media library table and served from `/uploads/…` with
+  immutable cache headers. The app writes nothing to disk, so it survives
+  redeploys and server rebuilds without a volume, and a database backup is a
+  complete backup. Images are capped at 8 MB each (PNG, JPEG, WebP, GIF, ICO).
 - The seed is idempotent and safe on every boot: it ensures settings + admin exist,
   and only creates sample data when the catalog is empty.

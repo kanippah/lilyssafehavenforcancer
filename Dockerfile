@@ -23,16 +23,15 @@ ENV NODE_OPTIONS="--max-old-space-size=${BUILD_HEAP_MB}"
 ENV BUILD_CPUS=${BUILD_CPUS}
 RUN pnpm build
 
+# Uploaded images live in Postgres, so this image is stateless — no volume.
 FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV UPLOAD_DIR=/app/uploads
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/package.json ./package.json
 COPY docker-entrypoint.sh ./
-RUN mkdir -p /app/uploads
 EXPOSE 3000
 CMD ["sh", "./docker-entrypoint.sh"]
