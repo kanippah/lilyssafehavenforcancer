@@ -14,6 +14,13 @@ FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# Keep the build inside a small server's memory: cap the heap and limit the
+# number of prerender workers. Raise these on a bigger box with
+# --build-arg BUILD_HEAP_MB=2048 --build-arg BUILD_CPUS=4
+ARG BUILD_HEAP_MB=896
+ARG BUILD_CPUS=2
+ENV NODE_OPTIONS="--max-old-space-size=${BUILD_HEAP_MB}"
+ENV BUILD_CPUS=${BUILD_CPUS}
 RUN pnpm build
 
 FROM base AS runner
