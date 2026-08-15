@@ -81,7 +81,7 @@ export async function mergeGuestCartIntoUser(userId: string): Promise<void> {
       if (existing) {
         await db.cartItem.update({
           where: { id: existing.id },
-          data: { quantity: existing.quantity + item.quantity },
+          data: { quantity: Math.min(99, existing.quantity + item.quantity) },
         });
       } else {
         await db.cartItem.create({

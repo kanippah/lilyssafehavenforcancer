@@ -117,6 +117,16 @@ export async function getCurrentUserAction() {
 
 function nextPath(formData: FormData): string | null {
   const next = formData.get("next");
-  if (typeof next === "string" && next.startsWith("/") && !next.startsWith("//")) return next;
-  return null;
+  if (typeof next !== "string") return null;
+  // Reject scheme/authority tricks outright: browsers normalize "/\evil.com"
+  // to "//evil.com", so a backslash anywhere is an open-redirect vector.
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return null;
+  try {
+    const base = new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000");
+    const url = new URL(next, base);
+    if (url.origin !== base.origin) return null;
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return null;
+  }
 }

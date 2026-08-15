@@ -2,10 +2,12 @@ import { db } from "@/lib/db";
 import { getSessionUser, isStaff } from "@/lib/auth";
 
 function csvField(value: string): string {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Neutralize spreadsheet formula injection (=, +, -, @ starters).
+  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  if (/[",\r\n]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safe;
 }
 
 export async function GET(): Promise<Response> {

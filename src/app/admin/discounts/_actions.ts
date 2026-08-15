@@ -72,8 +72,14 @@ function parseDiscountForm(formData: FormData): { error: string } | { data: Pars
     maxUses = n;
   }
 
+  // The form submits UTC instants (ISO with offset) converted in the browser,
+  // so the server's own timezone can never shift a schedule. Reject naive
+  // strings outright rather than guessing what wall clock they meant.
+  const isoInstant = /(Z|[+-]\d{2}:?\d{2})$/;
   const startsRaw = String(formData.get("startsAt") ?? "").trim();
   const endsRaw = String(formData.get("endsAt") ?? "").trim();
+  if (startsRaw && !isoInstant.test(startsRaw)) return { error: "The start date doesn't look right." };
+  if (endsRaw && !isoInstant.test(endsRaw)) return { error: "The end date doesn't look right." };
   const startsAt = startsRaw ? new Date(startsRaw) : null;
   const endsAt = endsRaw ? new Date(endsRaw) : null;
   if (startsAt && Number.isNaN(startsAt.getTime())) return { error: "The start date doesn't look right." };

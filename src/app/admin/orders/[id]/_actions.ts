@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { OrderStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getSessionUser, isStaff } from "@/lib/auth";
+import { releaseOrderReservations } from "@/lib/orders";
+import { getStripe } from "@/lib/stripe";
 
 export type NoteState = { error?: string; at?: number } | undefined;
 
@@ -18,19 +20,26 @@ function refresh(orderId: string): void {
   revalidatePath("/admin/orders");
 }
 
-/** Move an order from one of `allowedFrom` to `to`, logging a timeline event. */
+/**
+ * Move an order from one of `allowedFrom` to `to`, logging a timeline event.
+ * The status write is the guard (conditional updateMany), so stale buttons and
+ * double-submits no-op instead of clobbering a concurrent transition.
+ */
 async function transitionOrder(
   orderId: string,
   allowedFrom: OrderStatus[],
   to: OrderStatus,
   message: string
 ): Promise<void> {
-  const order = await db.order.findUnique({ where: { id: orderId }, select: { status: true } });
-  if (!order || !allowedFrom.includes(order.status)) return; // stale button — page refresh shows current state
-  await db.$transaction([
-    db.order.update({ where: { id: orderId }, data: { status: to } }),
-    db.orderEvent.create({ data: { orderId, message } }),
-  ]);
+  await db.$transaction(async (tx) => {
+    const updated = await tx.order.updateMany({
+      where: { id: orderId, status: { in: allowedFrom } },
+      data: { status: to },
+    });
+    if (updated.count === 1) {
+      await tx.orderEvent.create({ data: { orderId, message } });
+    }
+  });
   refresh(orderId);
 }
 
@@ -54,9 +63,6 @@ export async function markShipped(orderId: string, formData: FormData): Promise<
   const carrier = String(formData.get("trackingCarrier") ?? "").trim().slice(0, 60);
   const trackingNumber = String(formData.get("trackingNumber") ?? "").trim().slice(0, 80);
 
-  const order = await db.order.findUnique({ where: { id: orderId }, select: { status: true } });
-  if (!order || order.status !== "FULFILLED") return;
-
   const message =
     carrier && trackingNumber
       ? `Order shipped via ${carrier} — tracking ${trackingNumber}.`
@@ -66,17 +72,19 @@ export async function markShipped(orderId: string, formData: FormData): Promise<
           ? `Order shipped — tracking ${trackingNumber}.`
           : "Order shipped.";
 
-  await db.$transaction([
-    db.order.update({
-      where: { id: orderId },
+  await db.$transaction(async (tx) => {
+    const updated = await tx.order.updateMany({
+      where: { id: orderId, status: "FULFILLED" },
       data: {
         status: "SHIPPED",
         trackingCarrier: carrier || null,
         trackingNumber: trackingNumber || null,
       },
-    }),
-    db.orderEvent.create({ data: { orderId, message } }),
-  ]);
+    });
+    if (updated.count === 1) {
+      await tx.orderEvent.create({ data: { orderId, message } });
+    }
+  });
   refresh(orderId);
 }
 
@@ -85,7 +93,11 @@ export async function markDelivered(orderId: string): Promise<void> {
   await transitionOrder(orderId, ["SHIPPED"], "DELIVERED", "Order delivered.");
 }
 
-/** Cancel or refund: set the terminal status and return tracked stock to the shelves. */
+/**
+ * Cancel or refund: set the terminal status, return tracked stock, and release
+ * the discount use. The guarded status write runs first inside the transaction
+ * so two concurrent closes (cancel + refund, double-click) can't both restock.
+ */
 async function closeOrder(
   orderId: string,
   to: "CANCELLED" | "REFUNDED",
@@ -97,22 +109,41 @@ async function closeOrder(
   });
   if (!order || !allowedFrom.includes(order.status)) return;
 
-  await db.$transaction(async (tx) => {
-    let restocked = 0;
-    for (const item of order.items) {
-      if (!item.variantId) continue;
-      const result = await tx.productVariant.updateMany({
-        where: { id: item.variantId, trackStock: true },
-        data: { stock: { increment: item.quantity } },
-      });
-      if (result.count > 0) restocked += item.quantity;
+  // An unpaid card order may still have a live Stripe session — expire it so
+  // the customer can't pay for an order we're about to cancel. If expiry fails
+  // because payment just completed, abort; the webhook owns the order now.
+  if (order.status === "PENDING" && order.paymentMethod === "stripe" && order.paymentRef) {
+    const stripe = getStripe();
+    if (stripe) {
+      try {
+        await stripe.checkout.sessions.expire(order.paymentRef);
+      } catch (err) {
+        const fresh = await db.order.findUnique({
+          where: { id: orderId },
+          select: { status: true },
+        });
+        if (fresh?.status !== "PENDING") {
+          refresh(orderId);
+          return;
+        }
+        console.error("[admin-orders] expiring Stripe session failed:", err);
+      }
     }
+  }
+
+  await db.$transaction(async (tx) => {
+    const updated = await tx.order.updateMany({
+      where: { id: orderId, status: { in: allowedFrom } },
+      data: { status: to },
+    });
+    if (updated.count !== 1) return;
+
+    const restocked = await releaseOrderReservations(tx, order);
     const verb = to === "CANCELLED" ? "cancelled" : "refunded";
     const message =
       restocked > 0
         ? `Order ${verb} — ${restocked} item${restocked === 1 ? "" : "s"} returned to stock.`
         : `Order ${verb}.`;
-    await tx.order.update({ where: { id: orderId }, data: { status: to } });
     await tx.orderEvent.create({ data: { orderId, message } });
   });
   refresh(orderId);

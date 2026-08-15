@@ -6,8 +6,10 @@ import { getBearerUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { cartSubtotalCents, type CartWithItems } from "@/lib/cart";
 import {
+  DiscountUnavailableError,
   ORDER_STATUS_LABELS,
   OutOfStockError,
+  UnavailableItemError,
   computeTotals,
   createOrderFromCart,
   resolveDiscount,
@@ -176,6 +178,8 @@ export async function POST(req: Request) {
     orderId = order.id;
   } catch (err) {
     if (err instanceof OutOfStockError) return fail(err.message, 409);
+    if (err instanceof UnavailableItemError) return fail(err.message, 409);
+    if (err instanceof DiscountUnavailableError) return fail(err.message, 409);
     throw err;
   }
 

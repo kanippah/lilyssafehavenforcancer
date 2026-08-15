@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LilyMark } from "@/components/lily-mark";
+import { MobileMenu } from "@/components/store/mobile-menu";
 import { getSettings, getTotalRaisedCents } from "@/lib/settings";
 import { getSessionUser, isStaff } from "@/lib/auth";
 import { getCart, cartItemCount } from "@/lib/cart";
@@ -70,7 +71,7 @@ export async function StoreHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2.5">
-          <form action="/shop" className="hidden lg:block">
+          <form action="/shop" className="hidden md:block">
             <label htmlFor="site-search" className="sr-only">
               Search products
             </label>
@@ -119,33 +120,7 @@ export async function StoreHeader() {
             )}
           </Link>
 
-          <details className="relative md:hidden">
-            <summary
-              className="flex cursor-pointer list-none rounded-full p-2 text-ink/75 hover:bg-parchment [&::-webkit-details-marker]:hidden"
-              aria-label="Menu"
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
-              </svg>
-            </summary>
-            <nav
-              className="absolute right-0 top-11 z-50 w-48 rounded-xl border border-linen bg-paper p-2 shadow-[var(--shadow-lift)]"
-              aria-label="Mobile"
-            >
-              {NAV.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="block rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-parchment"
-                >
-                  {item.label}
-                </Link>
-              ))}
-              <Link href="/track" className="block rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-parchment">
-                Track an order
-              </Link>
-            </nav>
-          </details>
+          <MobileMenu items={NAV} />
         </div>
       </div>
     </header>

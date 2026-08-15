@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { LilyMark } from "@/components/lily-mark";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,55 @@ const SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+/** Small-screen replacement for the sidebar: a disclosure in the admin top bar. */
+export function AdminMobileNav({ isAdmin }: { isAdmin: boolean }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (ref.current) ref.current.open = false;
+  }, [pathname]);
+
+  return (
+    <details ref={ref} className="relative md:hidden">
+      <summary
+        className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-linen px-2.5 py-1.5 text-sm font-semibold text-ink [&::-webkit-details-marker]:hidden"
+        aria-label="Admin menu"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+        </svg>
+        Menu
+      </summary>
+      <nav
+        className="absolute left-0 top-10 z-50 max-h-[70vh] w-56 overflow-y-auto rounded-xl border border-linen bg-paper p-2 shadow-[var(--shadow-lift)]"
+        aria-label="Admin"
+      >
+        {SECTIONS.map((section) => {
+          const items = section.items.filter((i) => !i.adminOnly || isAdmin);
+          if (items.length === 0) return null;
+          return (
+            <div key={section.title} className="mb-2">
+              <p className="tabular px-2 pb-1 pt-1.5 text-[0.65rem] uppercase tracking-[0.16em] text-leaf">
+                {section.title}
+              </p>
+              {items.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="block rounded-lg px-2.5 py-1.5 text-sm font-medium text-ink hover:bg-parchment"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          );
+        })}
+      </nav>
+    </details>
+  );
+}
 
 export function AdminSidebar({
   storeName,

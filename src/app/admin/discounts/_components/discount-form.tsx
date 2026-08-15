@@ -25,6 +25,44 @@ function toLocalInput(date: Date | null): string {
   )}:${pad(date.getMinutes())}`;
 }
 
+/**
+ * Timezone-safe schedule picker: the visible input shows the admin's local
+ * wall-clock time (populated after hydration so the server render never
+ * carries a timezone-dependent value), while the submitted hidden field is an
+ * unambiguous UTC instant converted in the browser.
+ */
+function DateTimeField({
+  id,
+  name,
+  label,
+  hint,
+  initial,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  hint: string;
+  initial: Date | null;
+}) {
+  const [value, setValue] = useState("");
+  useEffect(() => {
+    if (initial) setValue(toLocalInput(new Date(initial)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <Field label={label} htmlFor={id} hint={hint}>
+      <Input
+        id={id}
+        type="datetime-local"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="tabular"
+      />
+      <input type="hidden" name={name} value={value ? new Date(value).toISOString() : ""} />
+    </Field>
+  );
+}
+
 export function DiscountForm({
   action,
   deleteAction,
@@ -150,24 +188,20 @@ export function DiscountForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Starts" htmlFor="discount-starts" hint="Optional — active immediately when empty.">
-          <Input
-            id="discount-starts"
-            name="startsAt"
-            type="datetime-local"
-            defaultValue={toLocalInput(initial?.startsAt ?? null)}
-            className="tabular"
-          />
-        </Field>
-        <Field label="Ends" htmlFor="discount-ends" hint="Optional — never expires when empty.">
-          <Input
-            id="discount-ends"
-            name="endsAt"
-            type="datetime-local"
-            defaultValue={toLocalInput(initial?.endsAt ?? null)}
-            className="tabular"
-          />
-        </Field>
+        <DateTimeField
+          id="discount-starts"
+          name="startsAt"
+          label="Starts"
+          hint="Optional — active immediately when empty. Shown in your local time."
+          initial={initial?.startsAt ?? null}
+        />
+        <DateTimeField
+          id="discount-ends"
+          name="endsAt"
+          label="Ends"
+          hint="Optional — never expires when empty. Shown in your local time."
+          initial={initial?.endsAt ?? null}
+        />
       </div>
 
       <label htmlFor="discount-active" className="flex items-center gap-2.5 text-sm font-semibold text-ink">

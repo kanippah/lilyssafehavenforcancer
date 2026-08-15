@@ -1,7 +1,8 @@
 import "server-only";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { CartWithItems } from "@/lib/cart";
-import type { DiscountCode, Order, Prisma, Setting } from "@prisma/client";
+import type { DiscountCode, Order, Setting } from "@prisma/client";
 
 export type OrderTotals = {
   subtotalCents: number;
@@ -82,6 +83,18 @@ export class OutOfStockError extends Error {
   }
 }
 
+export class UnavailableItemError extends Error {
+  constructor(public itemTitle: string) {
+    super(`"${itemTitle}" is no longer available.`);
+  }
+}
+
+export class DiscountUnavailableError extends Error {
+  constructor() {
+    super("That discount code has just been fully redeemed.");
+  }
+}
+
 /**
  * Create an order from a cart inside a transaction: validates + decrements
  * stock, snapshots line items, increments discount usage, logs the first
@@ -100,12 +113,41 @@ export async function createOrderFromCart(opts: {
   paymentRef?: string;
   status?: Order["status"];
   note?: string;
+  /** Leave the cart intact (Stripe path empties it only once the session exists). */
+  keepCart?: boolean;
 }): Promise<Order> {
+  // Retried because the friendly sequential order number can race under
+  // concurrent checkouts; later attempts switch to a collision-free number.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await createOrderAttempt(opts, attempt);
+    } catch (err) {
+      if (attempt < 2 && isOrderNumberCollision(err)) continue;
+      throw err;
+    }
+  }
+}
+
+function isOrderNumberCollision(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002" &&
+    String(err.meta?.target ?? "").includes("number")
+  );
+}
+
+async function createOrderAttempt(
+  opts: Parameters<typeof createOrderFromCart>[0],
+  attempt: number
+): Promise<Order> {
   const { cart, totals, settings } = opts;
   if (cart.items.length === 0) throw new Error("Cart is empty");
 
   return db.$transaction(async (tx) => {
     for (const item of cart.items) {
+      if (item.variant.product.status !== "ACTIVE") {
+        throw new UnavailableItemError(item.variant.product.title);
+      }
       if (!item.variant.trackStock) continue;
       const updated = await tx.productVariant.updateMany({
         where: { id: item.variantId, stock: { gte: item.quantity } },
@@ -116,7 +158,15 @@ export async function createOrderFromCart(opts: {
       }
     }
 
-    const number = await nextOrderNumber(tx);
+    if (opts.discount) {
+      // Guarded increment so concurrent checkouts can't push usedCount past maxUses.
+      const claimed = await tx.$executeRaw`
+        UPDATE "DiscountCode" SET "usedCount" = "usedCount" + 1
+        WHERE "id" = ${opts.discount.id} AND ("maxUses" IS NULL OR "usedCount" < "maxUses")`;
+      if (claimed === 0) throw new DiscountUnavailableError();
+    }
+
+    const number = attempt === 0 ? await nextOrderNumber(tx) : fallbackOrderNumber();
     const status = opts.status ?? "PAID";
 
     const order = await tx.order.create({
@@ -160,14 +210,9 @@ export async function createOrderFromCart(opts: {
       },
     });
 
-    if (opts.discount) {
-      await tx.discountCode.update({
-        where: { id: opts.discount.id },
-        data: { usedCount: { increment: 1 } },
-      });
+    if (!opts.keepCart) {
+      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
-
-    await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
 
     return order;
   });
@@ -180,7 +225,42 @@ async function nextOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
     const exists = await tx.order.findUnique({ where: { number: candidate } });
     if (!exists) return candidate;
   }
-  return `LSH-${Date.now().toString(36).toUpperCase()}`;
+  return fallbackOrderNumber();
+}
+
+function fallbackOrderNumber(): string {
+  const rand = Math.floor(Math.random() * 1296)
+    .toString(36)
+    .toUpperCase()
+    .padStart(2, "0");
+  return `LSH-${Date.now().toString(36).toUpperCase()}${rand}`;
+}
+
+/**
+ * Return what an order was holding: restock tracked variants and release the
+ * discount use. Run inside the same transaction as a guarded (updateMany with
+ * a status filter) move to CANCELLED/REFUNDED so it executes exactly once.
+ */
+export async function releaseOrderReservations(
+  tx: Prisma.TransactionClient,
+  order: { discountCode: string | null; items: Array<{ variantId: string | null; quantity: number }> }
+): Promise<number> {
+  let restocked = 0;
+  for (const item of order.items) {
+    if (!item.variantId) continue;
+    const result = await tx.productVariant.updateMany({
+      where: { id: item.variantId, trackStock: true },
+      data: { stock: { increment: item.quantity } },
+    });
+    if (result.count > 0) restocked += item.quantity;
+  }
+  if (order.discountCode) {
+    await tx.discountCode.updateMany({
+      where: { code: order.discountCode, usedCount: { gt: 0 } },
+      data: { usedCount: { decrement: 1 } },
+    });
+  }
+  return restocked;
 }
 
 export const ORDER_STATUS_LABELS: Record<Order["status"], string> = {

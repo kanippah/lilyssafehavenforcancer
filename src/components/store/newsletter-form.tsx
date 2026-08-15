@@ -11,10 +11,10 @@ export function NewsletterForm() {
 
   return (
     <form action={formAction} className="max-w-sm">
-      <label htmlFor="newsletter-email" className="eyebrow block">
+      <label htmlFor="newsletter-email" className="eyebrow block !text-petal">
         Letters from the Haven
       </label>
-      <p className="mt-1.5 text-sm text-moss">
+      <p className="mt-1.5 text-sm text-paper/70">
         A short, warm note each month: what your purchases funded, and who they reached.
       </p>
       <div className="mt-3 flex gap-2">

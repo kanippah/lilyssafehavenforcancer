@@ -10,6 +10,7 @@ const SHOP_LINKS = [
   { href: "/collections", label: "Collections" },
   { href: "/donate", label: "Make a donation" },
   { href: "/track", label: "Track an order" },
+  { href: "/shipping-returns", label: "Shipping & returns" },
 ];
 
 const HAVEN_LINKS = [

@@ -15,7 +15,7 @@ export default async function RegisterPage({
 }) {
   const sp = await searchParams;
   const next =
-    typeof sp.next === "string" && sp.next.startsWith("/") && !sp.next.startsWith("//")
+    typeof sp.next === "string" && sp.next.startsWith("/") && !sp.next.startsWith("//") && !sp.next.includes("\\")
       ? sp.next
       : undefined;
 

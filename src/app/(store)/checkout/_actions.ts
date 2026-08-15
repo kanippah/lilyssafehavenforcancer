@@ -8,9 +8,12 @@ import { getSessionUser } from "@/lib/auth";
 import { cartSubtotalCents, getCart } from "@/lib/cart";
 import { sendOrderConfirmation } from "@/lib/mail";
 import {
+  DiscountUnavailableError,
   OutOfStockError,
+  UnavailableItemError,
   computeTotals,
   createOrderFromCart,
+  releaseOrderReservations,
   resolveDiscount,
   type ShippingAddressInput,
 } from "@/lib/orders";
@@ -175,7 +178,9 @@ export async function placeOrder(_prev: CheckoutState, formData: FormData): Prom
     phone,
   };
 
-  const useStripe = values.paymentMethod === "stripe" && stripeConfigured();
+  // A fully-discounted order has nothing to charge — place it directly.
+  const useStripe =
+    values.paymentMethod === "stripe" && stripeConfigured() && totals.totalCents > 0;
 
   let destination: string;
   try {
@@ -190,6 +195,7 @@ export async function placeOrder(_prev: CheckoutState, formData: FormData): Prom
       discount,
       paymentMethod: useStripe ? "stripe" : "test",
       status: useStripe ? "PENDING" : "PAID",
+      keepCart: useStripe,
     });
 
     if (user && values.saveAddress === "on") {
@@ -223,25 +229,57 @@ export async function placeOrder(_prev: CheckoutState, formData: FormData): Prom
       const stripe = getStripe();
       if (!stripe) throw new Error("Stripe client unavailable");
       const base = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        customer_email: parsed.data.email,
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: settings.currency,
-              unit_amount: totals.totalCents,
-              product_data: { name: `Order ${order.number} — ${settings.storeName}` },
+      let sessionUrl: string;
+      try {
+        const session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          customer_email: parsed.data.email,
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: settings.currency,
+                unit_amount: totals.totalCents,
+                product_data: { name: `Order ${order.number} — ${settings.storeName}` },
+              },
             },
-          },
-        ],
-        metadata: { orderNumber: order.number },
-        success_url: `${base}/checkout/success/${order.number}?paid=1`,
-        cancel_url: `${base}/checkout`,
-      });
-      if (!session.url) throw new Error("Stripe did not return a checkout URL");
-      destination = session.url;
+          ],
+          metadata: { orderNumber: order.number },
+          success_url: `${base}/checkout/success/${order.number}?paid=1`,
+          cancel_url: `${base}/checkout/cancelled/${order.number}`,
+        });
+        if (!session.url) throw new Error("Stripe did not return a checkout URL");
+        await db.order.update({ where: { id: order.id }, data: { paymentRef: session.id } });
+        sessionUrl = session.url;
+      } catch (stripeErr) {
+        // The card session couldn't start: undo the reservation. The cart was
+        // kept (keepCart), so the customer can genuinely retry.
+        console.error("[checkout] stripe session failed:", stripeErr);
+        await db.$transaction(async (tx) => {
+          const closed = await tx.order.updateMany({
+            where: { id: order.id, status: "PENDING" },
+            data: { status: "CANCELLED" },
+          });
+          if (closed.count === 1) {
+            const full = await tx.order.findUnique({
+              where: { id: order.id },
+              include: { items: true },
+            });
+            if (full) await releaseOrderReservations(tx, full);
+            await tx.orderEvent.create({
+              data: { orderId: order.id, message: "Cancelled — card payment couldn't be started." },
+            });
+          }
+        });
+        return {
+          formError:
+            "We couldn't start the card payment, so the order wasn't placed and your basket is unchanged. Try again in a moment, or choose test payment.",
+          values,
+        };
+      }
+      // Session is live — now it's safe to empty the basket.
+      await db.cartItem.deleteMany({ where: { cartId: cart.id } });
+      destination = sessionUrl;
     } else {
       const placed = await db.order.findUnique({
         where: { id: order.id },
@@ -260,6 +298,15 @@ export async function placeOrder(_prev: CheckoutState, formData: FormData): Prom
         formError: `${err.message} Adjust the quantity in your basket and try again.`,
         values,
       };
+    }
+    if (err instanceof UnavailableItemError) {
+      return {
+        formError: `${err.message} Remove it from your basket and try again.`,
+        values,
+      };
+    }
+    if (err instanceof DiscountUnavailableError) {
+      return { fieldErrors: { discountCode: err.message }, values };
     }
     console.error("[checkout] placing order failed:", err);
     return {

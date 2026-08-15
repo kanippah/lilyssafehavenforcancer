@@ -5,12 +5,14 @@ import path from "path";
 import { db } from "@/lib/db";
 import type { MediaAsset } from "@prisma/client";
 
+// SVG is deliberately excluded: it is an active document (scripts execute when
+// opened directly), which would let a lower-privilege staff account plant
+// stored XSS on the app origin. Raster formats cover the upload use case.
 const ALLOWED_MIME: Record<string, string> = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
   "image/webp": ".webp",
   "image/gif": ".gif",
-  "image/svg+xml": ".svg",
   "image/x-icon": ".ico",
 };
 
@@ -27,7 +29,7 @@ export function uploadDir(): string {
  */
 export async function saveUploadedImage(file: File): Promise<MediaAsset> {
   const ext = ALLOWED_MIME[file.type];
-  if (!ext) throw new Error("Only PNG, JPEG, WebP, GIF, SVG, or ICO images are allowed.");
+  if (!ext) throw new Error("Only PNG, JPEG, WebP, GIF, or ICO images are allowed.");
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("Images must be 8 MB or smaller.");
 
   const name = `${Date.now()}-${randomBytes(5).toString("hex")}${ext}`;

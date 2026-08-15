@@ -77,7 +77,7 @@ function readForm(formData: FormData): Record<string, unknown> | { parseError: s
     featured: formData.get("featured") === "on",
     tags: String(formData.get("tags") ?? "")
       .split(",")
-      .map((t) => t.trim())
+      .map((t) => t.trim().toLowerCase())
       .filter(Boolean),
     seoTitle: String(formData.get("seoTitle") ?? "").trim() || undefined,
     seoDescription: String(formData.get("seoDescription") ?? "").trim() || undefined,
