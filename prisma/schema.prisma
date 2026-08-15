@@ -1,0 +1,345 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FULFILLED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+  FREE_SHIPPING
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role      @default(CUSTOMER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  addresses      Address[]
+  orders         Order[]
+  reviews        Review[]
+  wishlist       WishlistItem[]
+  cart           Cart?
+  resetTokens    PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  userId     String
+  label      String?
+  fullName   String
+  line1      String
+  line2      String?
+  city       String
+  state      String?
+  postalCode String
+  country    String  @default("United States")
+  phone      String?
+  isDefault  Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id             String        @id @default(cuid())
+  title          String
+  slug           String        @unique
+  description    String        @default("")
+  story          String        @default("")
+  status         ProductStatus @default(DRAFT)
+  featured       Boolean       @default(false)
+  tags           String[]      @default([])
+  seoTitle       String?
+  seoDescription String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  images      ProductImage[]
+  variants    ProductVariant[]
+  collections CollectionProduct[]
+  reviews     Review[]
+  wishlistedBy WishlistItem[]
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  url       String
+  alt       String?
+  position  Int     @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductVariant {
+  id             String  @id @default(cuid())
+  productId      String
+  title          String  @default("Default")
+  sku            String?
+  priceCents     Int
+  compareAtCents Int?
+  stock          Int     @default(0)
+  trackStock     Boolean @default(true)
+  position       Int     @default(0)
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+}
+
+model Collection {
+  id          String  @id @default(cuid())
+  title       String
+  slug        String  @unique
+  description String  @default("")
+  imageUrl    String?
+  position    Int     @default(0)
+
+  products CollectionProduct[]
+}
+
+model CollectionProduct {
+  productId    String
+  collectionId String
+
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, collectionId])
+}
+
+model Cart {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  userId    String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+}
+
+model CartItem {
+  id        String @id @default(cuid())
+  cartId    String
+  variantId String
+  quantity  Int    @default(1)
+
+  cart    Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, variantId])
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  number          String      @unique
+  userId          String?
+  email           String
+  phone           String?
+  status          OrderStatus @default(PENDING)
+  shippingName    String
+  shippingAddress Json
+  subtotalCents   Int
+  discountCents   Int         @default(0)
+  shippingCents   Int         @default(0)
+  taxCents        Int         @default(0)
+  donationCents   Int         @default(0)
+  totalCents      Int
+  currency        String      @default("usd")
+  paymentMethod   String      @default("manual")
+  paymentRef      String?
+  discountCode    String?
+  note            String?
+  trackingCarrier String?
+  trackingNumber  String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user   User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items  OrderItem[]
+  events OrderEvent[]
+}
+
+model OrderItem {
+  id           String  @id @default(cuid())
+  orderId      String
+  variantId    String?
+  title        String
+  variantTitle String  @default("")
+  imageUrl     String?
+  unitCents    Int
+  quantity     Int
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+}
+
+model OrderEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  message   String
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model DiscountCode {
+  id               String       @id @default(cuid())
+  code             String       @unique
+  type             DiscountType
+  value            Int          @default(0)
+  minSubtotalCents Int?
+  maxUses          Int?
+  usedCount        Int          @default(0)
+  startsAt         DateTime?
+  endsAt           DateTime?
+  active           Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+}
+
+model Review {
+  id        String       @id @default(cuid())
+  productId String
+  userId    String?
+  name      String
+  rating    Int
+  title     String?
+  body      String
+  status    ReviewStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+model MediaAsset {
+  id        String   @id @default(cuid())
+  url       String
+  filename  String
+  mime      String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  id                        Int      @id @default(1)
+  storeName                 String   @default("Lily's Safe Haven")
+  tagline                   String   @default("A shop where every purchase shelters someone facing cancer.")
+  logoUrl                   String?
+  faviconUrl                String?
+  announcement              String?
+  heroHeading               String   @default("Every purchase is a small shelter.")
+  heroSubheading            String   @default("Comfort goods, kind apparel, and care kits — 100% of proceeds fund real help for people in treatment.")
+  heroImageUrl              String?
+  missionStatement          String   @default("Lily's Safe Haven for Cancer exists to wrap people in practical comfort while they fight: warm things, soft things, useful things — and the funds to keep care within reach.")
+  companyName               String   @default("Lily's Safe Haven for Cancer")
+  supportEmail              String   @default("care@lilyssafehavenforcancer.com")
+  phone                     String?
+  companyAddress            String?
+  socialInstagram           String?
+  socialFacebook            String?
+  socialTiktok              String?
+  socialX                   String?
+  currency                  String   @default("usd")
+  shippingFlatCents         Int      @default(599)
+  freeShippingThresholdCents Int?    @default(7500)
+  taxRatePct                Float    @default(0)
+  impactUnitCents           Int      @default(2500)
+  impactUnitLabel           String   @default("care kit for a patient in treatment")
+  donationEnabled           Boolean  @default(true)
+  updatedAt                 DateTime @updatedAt @default(now())
+}
+
+model Page {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  body      String   @default("")
+  updatedAt DateTime @updatedAt @default(now())
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  excerpt     String    @default("")
+  body        String    @default("")
+  coverUrl    String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model NewsletterSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

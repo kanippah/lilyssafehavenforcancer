@@ -1,26 +1,172 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ============================================================
+   Lily's Safe Haven — "The Garden Press" design system
+   Deep conservatory green ink on blush paper; lily-petal rose
+   used sparingly; prices set in mono like a keepsake receipt.
+   ============================================================ */
+
+@theme {
+  /* Palette */
+  --color-ink: #24352c; /* deep conservatory green — primary text, dark surfaces */
+  --color-pine: #2f4a3a; /* dark green panel */
+  --color-leaf: #4c6b54; /* interactive green */
+  --color-fern: #5f7f66; /* hover green */
+  --color-moss: #8aa290; /* muted green — borders, quiet text on dark */
+  --color-paper: #fbf7f4; /* blush paper background */
+  --color-parchment: #f3ebe5; /* deeper paper — wells, cards */
+  --color-linen: #e7dcd3; /* hairline borders on paper */
+  --color-petal: #edb8c6; /* soft lily rose */
+  --color-blush: #f7e3e8; /* pale rose wash */
+  --color-rose: #ad5871; /* deep rose — accents, sale prices */
+  --color-pollen: #d9a441; /* stamen gold — ratings, small highlights */
+  --color-clay: #b0442e; /* errors */
+  --color-sky: #6b8fa3; /* info */
+
+  /* Type */
+  --font-display: var(--font-young-serif), "Young Serif", Georgia, serif;
+  --font-sans: var(--font-albert-sans), "Albert Sans", system-ui, sans-serif;
+  --font-mono: var(--font-dm-mono), "DM Mono", ui-monospace, monospace;
+
+  /* Shape */
+  --radius-card: 1rem;
+  --radius-button: 0.625rem;
+
+  --shadow-lift: 0 1px 2px rgb(36 53 44 / 0.06), 0 8px 24px -12px rgb(36 53 44 / 0.18);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ---------- Base ---------- */
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 1.0625rem; /* 17px — generous, readable base */
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+::selection {
+  background: var(--color-petal);
+  color: var(--color-ink);
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-leaf);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ---------- Recurring devices ---------- */
+
+/* Small-caps botanical-catalog label */
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-leaf);
+}
+
+/* Keepsake-receipt numerals: prices, order numbers, quantities */
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* The care ledger line under prices */
+.ledger-line {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-rose);
+}
+
+/* Hairline rule in the style of a pressed-flower album */
+.rule {
+  border: 0;
+  border-top: 1px solid var(--color-linen);
+}
+
+/* Gentle rise on load for hero content */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.rise-1 { animation-delay: 0.05s; }
+.rise-2 { animation-delay: 0.15s; }
+.rise-3 { animation-delay: 0.25s; }
+
+/* ---------- Admin tables ---------- */
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.admin-table th {
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-leaf);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-linen);
+  white-space: nowrap;
+}
+.admin-table td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--color-linen);
+  vertical-align: middle;
+}
+.admin-table tbody tr:hover {
+  background: var(--color-parchment);
+}
+
+/* ---------- Long-form content (pages, stories, product descriptions) ---------- */
+
+.prose-haven {
+  max-width: 65ch;
+}
+.prose-haven p { margin: 1em 0; }
+.prose-haven h2 {
+  font-size: 1.6rem;
+  margin: 1.6em 0 0.5em;
+}
+.prose-haven h3 {
+  font-size: 1.25rem;
+  margin: 1.4em 0 0.4em;
+}
+.prose-haven ul, .prose-haven ol { padding-left: 1.4em; margin: 1em 0; }
+.prose-haven ul { list-style: disc; }
+.prose-haven ol { list-style: decimal; }
+.prose-haven a { color: var(--color-rose); text-decoration: underline; text-underline-offset: 3px; }
+.prose-haven blockquote {
+  border-left: 3px solid var(--color-petal);
+  padding-left: 1rem;
+  color: var(--color-pine);
+  font-style: italic;
+  margin: 1.2em 0;
 }

@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local
+.env
+uploads/
+.pgdata/
+scripts/start-pg.cmd

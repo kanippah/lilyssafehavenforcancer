@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lily's Safe Haven for Cancer
 
-## Getting Started
+A complete, self-hosted e-commerce platform for the Lily's Safe Haven cancer charity —
+storefront, admin portal, customer accounts, and a REST API for the future Expo mobile app.
+Built with Next.js 16, TypeScript, Tailwind CSS 4, Prisma, and PostgreSQL.
 
-First, run the development server:
+**Design:** "The Garden Press" — a keepsake botanical-press aesthetic. Deep conservatory
+green ink on blush paper, prices set in mono like a keepsake receipt, and a signature
+*care ledger*: every price on the site shows the real help it funds
+("funds 1 care kit for a patient in treatment"), driven by a configurable impact unit.
+
+## What's inside
+
+**Storefront** — home, shop with search/filters/sort, product pages with variants +
+reviews + wishlist, collections, cart, single-page checkout (discount codes, donation
+round-up, Stripe or test payment), keepsake order receipts, guest order tracking,
+stories (blog), about/FAQ/legal CMS pages, contact form, direct-donation page,
+newsletter signup, live "raised so far" counter.
+
+**Customer accounts** — registration/login (local database), order history with
+timelines, address book, wishlist, profile + password management, password reset
+(when SMTP is configured).
+
+**Admin portal** (`/admin`) — dashboard with revenue chart + low-stock/attention
+queues, product CRUD (variants, images, SEO, collections), collection CRUD, media
+library, order management (status flow, tracking, cancel/refund with restock,
+internal notes), customers, discount codes, review moderation, stories/pages CMS,
+contact inbox, newsletter subscribers + CSV export, store settings (logo upload,
+company info, hero, shipping/tax, impact unit), staff role management.
+
+**REST API** (`/api/v1`) — bearer-token auth, products, collections, cart (guest
+token flow), orders, wishlist, store meta. Written for the future Expo app;
+see [docs/API.md](docs/API.md).
+
+## Deploy on Coolify
+
+1. **Create the database.** In Coolify: *Resources → PostgreSQL* (any recent version).
+   Note its internal connection URL, e.g.
+   `postgresql://postgres:<password>@<service-name>:5432/postgres`.
+
+2. **Create the app.** *Resources → Application → Public Repository* →
+   `https://github.com/kanippah/lilyssafehavenforcancer` (branch `main`).
+   Build pack: **Dockerfile** (auto-detected). Port: **3000**.
+
+3. **Environment variables:**
+
+   | Variable | Value |
+   |---|---|
+   | `DATABASE_URL` | the Postgres URL from step 1 |
+   | `AUTH_SECRET` | long random string (`openssl rand -base64 48`) |
+   | `NEXT_PUBLIC_SITE_URL` | `https://lilyssafehavenforcancer.com` |
+   | `ADMIN_EMAIL` | your admin login email |
+   | `ADMIN_PASSWORD` | your admin password (change after first login) |
+   | `ADMIN_NAME` | display name |
+   | `SEED_SAMPLE_DATA` | `true` for the demo catalog, `false` for an empty store |
+   | `STRIPE_SECRET_KEY` | *(optional)* enables card checkout |
+   | `STRIPE_WEBHOOK_SECRET` | *(optional)* webhook signing secret for `/api/webhooks/stripe` |
+   | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | *(optional)* order + reset emails |
+
+4. **Persistent storage.** Add a volume mounted at **`/app/uploads`** — this is where
+   admin-uploaded images (logo, product photos) live.
+
+5. **Domain.** Point `lilyssafehavenforcancer.com` at the app in Coolify's domain
+   settings; Coolify provisions TLS.
+
+6. **Deploy.** On boot the container runs migrations, seeds (idempotent — creates the
+   admin account and, on first boot only, the sample catalog), and starts Next.js.
+   Log in at `/login` with your admin credentials → you land in `/admin`.
+
+Without sample data, start at *Admin → Settings* (logo + company info), then
+*Products* and *Collections*.
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env        # defaults point at the local dev database
+pnpm db:local               # real PostgreSQL 17 on :5433, no Docker needed
+# in a second terminal:
+pnpm db:migrate && pnpm db:seed
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Storefront: http://localhost:3000 · Admin: http://localhost:3000/admin
+- Seeded logins — admin: `admin@lilyssafehavenforcancer.com` / `admin1234`,
+  demo customer: `customer@example.com` / `customer123`
+- `pnpm db:local` refuses to run from an elevated/administrator shell
+  (a PostgreSQL-on-Windows rule) — use a regular shell.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Payments
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Checkout always offers **Test payment** (no charge — orders are created as paid) so the
+platform works end-to-end before Stripe is configured. Add `STRIPE_SECRET_KEY` to enable
+hosted Stripe Checkout; point a Stripe webhook (`checkout.session.completed`) at
+`https://lilyssafehavenforcancer.com/api/webhooks/stripe` with `STRIPE_WEBHOOK_SECRET`.
 
-## Learn More
+## Stack notes
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- All money is stored as integer cents. Currency configurable in admin settings.
+- Auth is a local-database credential system (bcrypt + signed HttpOnly JWT cookie);
+  the same JWTs work as bearer tokens for `/api/v1`.
+- Uploaded images are stored on disk (`UPLOAD_DIR`, default `./uploads`) and recorded
+  in the media library; everything else lives in PostgreSQL.
+- The seed is idempotent and safe on every boot: it ensures settings + admin exist,
+  and only creates sample data when the catalog is empty.
