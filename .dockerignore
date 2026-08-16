@@ -1,8 +1,11 @@
-node_modules
-.next
-.git
-.pgdata
-uploads
-.env
-*.md
-scripts/local-db.mjs
+# Anchor every pattern with a leading slash: an unanchored name would also
+# match same-named directories inside src/ and silently drop application code.
+/node_modules
+/.next
+/.git
+/.pgdata
+/.env
+/README.md
+/docs
+/scripts/local-db.mjs
+/scripts/start-pg.cmd

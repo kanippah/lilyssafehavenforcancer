@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — real secrets stay out, but the documented template is committed
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -41,7 +42,8 @@ yarn-error.log*
 next-env.d.ts
 
 # local
-.env
-uploads/
+# NOTE: never write bare "uploads/" here — an unanchored pattern also matches
+# src/app/uploads/, which is application source. Uploaded images now live in
+# Postgres, so there is no runtime upload directory to ignore at all.
 .pgdata/
 scripts/start-pg.cmd
